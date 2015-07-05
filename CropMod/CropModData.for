@@ -895,6 +895,11 @@
         real      y_stress_photo(max_table)        ! Factors for effect of critical temperatures on rue (0-1)
         integer   num_ave_temp                     ! size_of critical temperatures - rue table
 
+		! added by ZN-J for wofost method
+        real      x_ave_temp_wofost    (max_table)        ! critical temperatures for RUE (oC)
+        real      y_stress_photo_wofost(max_table)        ! Factors for effect of critical temperatures on rue (0-1)
+        integer   num_ave_temp_wofost                     ! size_of critical temperatures - rue table		
+		
 
         !??????????????
         real      x_temp_photo(max_table)          !critical temp. for photosyn (oC) on 3-hour. - replaces  x_ave_temp above
@@ -1326,6 +1331,7 @@
         !coeff_7_int/
 
         integer     num_factors            ! size_of table
+        integer     num_factors_wofost     ! size_of table, added by ZN-J		
         integer     num_temp_other         !
         integer     num_x_leaf_no          ! sla option
         integer     num_x_lai              ! sla option

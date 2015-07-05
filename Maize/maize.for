@@ -1280,6 +1280,20 @@ c     :                    , 0.0, 100.0)
      :                     , 'y_stress_photo', max_table, '()'
      :                     , c%y_stress_photo, c%num_factors
      :                     , 0.0, 1.0)
+	 
+!! added by ZN-J for wofost method
+      call read_real_array (section_name
+     :                     , 'x_ave_temp_wofost', max_table, '(oC)'
+     :                     , c%x_ave_temp_wofost, c%num_ave_temp_wofost
+     :                     , 0.0, 100.0)
+
+      call read_real_array (section_name
+     :                     , 'y_stress_photo_wofost', max_table, '()'
+     :                     , c%y_stress_photo_wofost, c%num_factors
+     :                     , 0.0, 1.0)	 
+	 
+	 
+	 
 
          ! TEMPLATE OPTION
          !    Maize_dm_grain
@@ -1470,7 +1484,7 @@ c     :                    , 0.0, 100.0)
 !!      call Maize_p_stress_expansion(1)
 !!      call Maize_p_stress_grain(1)
 
-      call Maize_temp_stress(1)		!!JZN
+      call Maize_temp_stress(1)		!!ZN-J
 
       call Maize_light_supply(1)
       call Maize_bio_RUE(1)
@@ -5947,8 +5961,9 @@ cpsc need to develop leaf senescence functions for crop
 *- Implementation Section ----------------------------------
 
       call push_routine (my_name)
-
-      if (Option .eq. 1) then
+	
+	!! Add more Options by ZN-J 
+      if (Option .eq. 1) then		!! standard APSIM	  
           call crop_temperature_stress_photo
      :               (c%num_ave_temp
      :              , c%x_ave_temp
@@ -5956,8 +5971,36 @@ cpsc need to develop leaf senescence functions for crop
      :              , g%maxt
      :              , g%mint
      :              , g%temp_stress_photo)
-      else
-         call Fatal_error (ERR_internal, 'Invalid template option')
+	 
+      elseif (Option .eq. 2) then	!! STICS method(canopy temperature) 
+          call crop_temperature_stress_stics
+     :               (c%num_ave_temp
+     :              , c%x_ave_temp
+     :              , c%y_stress_photo
+     :              , g%maxt
+     :              , g%mint
+     :              , g%temp_stress_photo)	  
+	  
+      elseif (Option .eq. 3) then	!! SWAT method(exponential) 
+          call crop_temperature_stress_swat
+     :               (c%num_ave_temp
+     :              , c%x_ave_temp
+     :              , c%y_stress_photo
+     :              , g%maxt
+     :              , g%mint
+     :              , g%temp_stress_photo)
+	 
+      elseif (Option .eq. 4) then	!! WOFOST(more linear pieces) 
+          call crop_temperature_stress_photo
+     :               (c%num_ave_temp_wofost			!! constant differ with APSIM
+     :              , c%x_ave_temp_wofost			!! constant differ with APSIM		
+     :              , c%y_stress_photo_wofost		!! constant differ with APSIM
+     :              , g%maxt
+     :              , g%mint
+     :              , g%temp_stress_photo)
+	 
+	  else
+	     call Fatal_error (ERR_internal, 'Invalid template option')
       endif
 
       call pop_routine (my_name)
