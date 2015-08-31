@@ -39,6 +39,16 @@
       -->
     <crop_type>maize</crop_type>
     <!-- %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+      SECTION 0 - SIMULATION OPTIONS, new added by ZN-Jin to allow switch between algorithms
+      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+      -->
+	<option_bio_TE description="1 for standard APSIM, 2 for updated VPD method">1</option_bio_TE>
+	<option_trans_eff description="1 for standard APSIM, 2 for updated VPD method">1</option_trans_eff>
+	<option_temp_stress description="heat stress response: 1 for default, 2 for STICS, 3 for SWAT, 4 for WOFOST">1</option_temp_stress>
+	<option_grain_demand description="yield calculation: 1 for default, 2 for STICS, 3 for MAIZSIM">1</option_grain_demand>
+	<option_HI_method description="harvest index method: 1 for PEGASUS, 2 for SWAT, 3 for AquaCrop">1</option_HI_method>
+	<option_photosynthesis description="photosynthesis model: 1 for RUE model, 2 for Farquhar model">1</option_photosynthesis>
+    <!-- %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
       SECTION 1 - CROP PHENOLOGY: DEVELOPMENT PARAMETERS
       %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
       -->
@@ -117,6 +127,21 @@
     <y_stress_photo description="multiplier on RUE">0  1  1  0</y_stress_photo>	
 	<x_ave_temp_wofost units="oC" description="mean daily temperature">0 9 16 18 20 30 36 42</x_ave_temp_wofost> <!--added by ZN-J  -->
     <y_stress_photo_wofost description="multiplier on RUE">0.01 0.05 0.80 0.94 1.0 1.0 0.95 0.56</y_stress_photo_wofost>
+	<baseT_swat units="oC" description="base temperature in SWAT response method">10</baseT_swat> <!--added by ZN-J  -->
+	<optT_swat units="oC" description="optimum temperature in SWAT response method">25</optT_swat> <!--added by ZN-J  -->
+    <!-- __________________________________________________________________________________________________________-
+      Farquhar Photosynthesis Model, added by ZN-Jin
+      -->
+	<EPAR units="umol/J" description="PAR photon energy ratio">4.55</EPAR>
+	<ppfd_coef units="umol/m2/s" description="coef in a relationship between gs and ppfd">0.01</ppfd_coef>
+	<stomatal_gmax units="m/s" description="maximum stomatal conductance">0.005</stomatal_gmax>
+	<stomatal_optT units="oC" description="optimum temperature for conductance">25.0</stomatal_optT>
+	<stomatal_limT units="oC" description="limiting temperature beyond which no conductance">40.0</stomatal_limT>
+	<vpd_close units="kPa" description="VPD at stomatal closure">4.1</vpd_close>
+	<vpd_open units="kPa" description="VPD at stomatal full opening">0.93</vpd_open>
+	<Rm_Q10 units="" description="Q10 value for maintenance respiration function">2.0</Rm_Q10>
+	<Rm_coef units="g g-1 day-1" description="coefficient for maintenance respiration">0.002</Rm_coef>
+	<Rg_coef units="" description="overall growth respiration coefficient">0.25</Rg_coef>
     <!-- %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
       BIOMASS INITIATION, PARTITION AND TRANSLOCATION
       %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -155,10 +180,29 @@
       -->
     <x_temp_grain units="oC">6.0 10. 16. 22. 30. 56.3</x_temp_grain> <!-- PLP? Carberry et al. 1989 optimum set to 30 -->
     <y_grain_rate>0.0 .40 .75 1.0 1.0 0.0</y_grain_rate>
+	<maizsim_Td units="oC" description="High temperature compensation point">48.6</maizsim_Td> <!--added by ZN-J  -->
+	<maizsim_b1 description="Normalized parameter for temperature response function">2.3252</maizsim_b1>
+	<maizsim_b2 description="Normalized parameter for temperature response function">0.1854</maizsim_b2>
+	<maizsim_b3 description="Normalized parameter for temperature response function">0.2035</maizsim_b3>
     <!-- __________________________________________________________________________________________________________-
       GRAIN WATER CONTENT
       -->
     <grn_water_cont units="g/g" description="water content of grain g/g">0.155</grn_water_cont>
+    <!-- __________________________________________________________________________________________________________-
+      HARVEST INDEX (HI) method, added by ZN-J
+      -->
+    <HI0_PEGASUS description="optimal HI for PEGASUS method">0.45</HI0_PEGASUS>
+    <HI0_SWAT description="optimal HI for SWAT method">0.5</HI0_SWAT>
+    <HI_SWAT_min description="HI in drought condition and represents the minimum HI">0.3</HI_SWAT_min>
+    <HI_SWAT_coef1 description="first curve coef for HI under water stress">6.13</HI_SWAT_coef1>
+    <HI_SWAT_coef2 description="second curve coef for HI under water stress">0.883</HI_SWAT_coef2>	
+    <HI0_AquaCrop description="optimal HI for PEGASUS method">0.45</HI0_AquaCrop>
+	<HI_Brel_top description="top of Brel range affecting HI0">0.84</HI_Brel_top>
+	<HI_dHI_ante description="allowable increase of HI0 due to water stress bf VT (<=15)">10</HI_dHI_ante>
+	<HI_def_pol description="upper threshold for water deficit, relative to Wu/Wd">0.2</HI_def_pol>
+	<HI_Tn_cold description="threshold when cold damage starts(oC)">10</HI_Tn_cold>
+	<HI_Tx_heat description="threshold when heat damage starts(oC">35</HI_Tx_heat>
+	<HI_excess_fl description="percentage of excess flowers that can be used to compensate loss(%)">30</HI_excess_fl>
     <!-- %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
       SECTION 3 - LEAF/STEM/POD AREA GROWTH
       %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

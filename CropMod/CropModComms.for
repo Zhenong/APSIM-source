@@ -2651,6 +2651,11 @@ c         g%co2level = c%co2level
      :                                  , g%eo, numvals
      :                                  , 0.0, 20.0)
 
+      !Added by ZN-J 
+      call get_real_var_optional (unknown_module, 'es', '(mm)'
+     :                                  , g%es, numvals
+     :                                  , 0.0, 20.0)
+
       !Get soil temperature
 c      call get_real_var_optional (unknown_module, 'soil_temp', '(oC)'
 c     :                                  , soil_temp, numvals
@@ -5443,11 +5448,15 @@ c      g%latitude            = 0.0
 c      g%radn                = 0.0
 c      g%mint                = 0.0
 c      g%maxt                = 0.0
-
+      g%dayl                = 0.0   ! added by ZN-J
 c     CALL fill_real_array(g%soil_temp,0.0, 366)
 
+      g%canopy_temp         = 0.0	! added by ZN-J
+      g%transpiration       = 0.0	! added by ZN-J
+
       g%vpd                 = 0.0
-      g%eo                  = 0.0
+      g%eo                  = 0.0	
+      g%es                  = 0.0	! added by ZN-J	  
       g%accum_rad_10d       = 0.0
 
       call fill_real_array(g%rad_accum,0.0,10)
@@ -5508,7 +5517,32 @@ c     CALL fill_real_array(g%soil_temp,0.0, 366)
 
 
       g%dm_green_grainno = 0.0
+      g%grain_htstress_maizsim   = 0.0     !added by ZN-J
+  
+      !Farquhar photosynthesis model
+	  !added by ZN-J
+      g%lai_sun             = 0.0
+      g%lai_shade           = 0.0
+      g%ppfd_sun_noon       = 0.0
+      g%ppfd_shade_noon     = 0.0
+      g%stomatal_gn         = 0.0
+      g%stomatal_gmin       = 0.0
+      g%A_sun               = 0.0
+      g%A_shade             = 0.0
+      g%dlt_gpp             = 0.0
+      g%dlt_Rm              = 0.0
+      g%dlt_Rg              = 0.0
 
+      !harvest index (HI)
+      g%f_ante      =0.0      !added by ZN-J
+      g%f_pol       =0.0      !added by ZN-J
+  
+      call fill_real_array(g%HI,           0.0, 366)    !added by ZN-J
+      call fill_real_array(g%HSA_htstress, 0.0, 366)    !added by ZN-J	  
+      call fill_real_array(g%HI_h2o_stress, 0.0, 366)   !added by ZN-J		  
+      call fill_real_array(g%dlt_Brel, 0.0, 366)        !added by ZN-J
+      call fill_real_array(g%dlt_KS, 0.0, 50)           !added by ZN-J
+  
       !leaf area index
       g%slai                   =0.0
       g%tpla_today             =0.0
@@ -5715,6 +5749,7 @@ c      g%dlt_n_uptake_stover=0.0
       g%radn                = 0.0
       g%mint                = 0.0
       g%maxt                = 0.0
+      g%vp                  = 0.0    ! added by ZN-J
 
       g%fr_intc_radn        = 0.0
 
@@ -5811,6 +5846,13 @@ c      g%dlt_n_uptake_stover=0.0
       call fill_real_array(c%rue_diff_modifier,  0.0, max_table)
       c%num_radn_diff_fr = 0
 
+	  !Simulation Options
+      c%option_bio_TE            = 0
+      c%option_trans_eff         = 0
+      c%option_temp_stress       = 0
+      c%option_grain_demand      = 0
+      c%option_HI_method         = 0
+      c%option_photosynthesis    = 0	  
 
       !co2 level
       c%co2switch  = 0
@@ -5922,9 +5964,40 @@ c      g%dlt_n_uptake_stover=0.0
 
       c%max_grainn_fill_rate = 0.0
 
-
       c%grain_no_intercept = 0.0
-
+	  
+      !Farquhar photosynthesis model
+	  !added by ZN-J
+      c%EPAR             = 0.0
+      c%ppfd_coef        = 0.0
+      c%stomatal_gmax    = 0.0
+      c%stomatal_optT    = 0.0
+      c%stomatal_limT    = 0.0
+      c%vpd_close        = 0.0
+      c%vpd_open         = 0.0
+      c%Rm_Q10           = 0.0
+      c%Rm_coef          = 0.0
+      c%Rg_coef          = 0.0
+	  
+	  ! Harvest Index (HI)
+      c%HSA_crT      = 0.0   !added by ZN-J for PEGASUS
+      c%HSA_limT     = 0.0
+      c%HI0_PEGASUS  = 0.0
+	  
+      c%HI0_SWAT        = 0.0   !added by ZN-J for SWAT
+      c%HI_SWAT_min     = 0.0 	  
+      c%HI_SWAT_coef1   = 0.0 	  
+      c%HI_SWAT_coef2   = 0.0 
+	  
+      c%HI0_AquaCrop    = 0.0   !added by ZN-J for AquaCrop
+      c%HI_Brel_top     = 0.0 	  
+      c%HI_dHI_ante     = 0.0 	  
+      c%HI_def_pol      = 0.0 	  
+      c%HI_Tn_cold      = 0.0 
+      c%HI_Tx_heat      = 0.0 	  
+      c%HI_excess_fl    = 0.0 
+	  
+	  
       !coeff
       c%leaf_no_crit                =0.0
       c%tt_emerg_limit              =0.0
@@ -6192,10 +6265,7 @@ c      g%dlt_n_uptake_stover=0.0
 
       c%num_sw_avail_ratio_tiller = 0
 
-
-
-
-
+	  
       call fill_real_array(c%x_fract_avail_sw,   0.0,  max_table)
       call fill_real_array(c%y_fact_diffn_const, 0.0, max_table)
       c%num_fract_avail_sw = 0

@@ -216,10 +216,16 @@
         real      radn                ! solar radiation (Mj/m^2/day)
         real      mint                ! minimum air temperature (oC)
         real      maxt                ! maximum air temperature (oC)
-        real      vpd                 ! daytime average vapur pressure deficit ()
+        real      dayl                ! day length (hr), added by ZN-Jin
+        real      vpd                 ! daytime average vapur pressure deficit (KPa)
+        real      vp                  ! daytime average vapur pressure(KPa)
 
         real      soil_temp(366)      ! soil surface temperature (oC)
-        real      eo                  ! eo value from eo module
+        real      eo                  ! eo value from soil water module
+        real      es                  ! es value from soil water module, added by ZN-J		
+
+        real      canopy_temp         ! daily average canopy temperature (oC), added by ZN-J
+        real      transpiration       ! daily plant transpiration, added by ZN-J
 
         !??????????????????????????????????????????????????????????????
         !not well-defined variables
@@ -338,10 +344,27 @@
         real      dm_green_grainno               ! dry matter determining grain number (g/m2)
 
 
-
+		!Farquhar photosynthesis model
+		!added by ZN-Jin
+        real      lai_sun                        !projected sunlit leaf area index(m2/m2)
+        real      lai_shade                      !projected shaded leaf area index(m2/m2)
+        real      ppfd_sun_noon                  !ppfd for sunlit leaf at noon(umol/m2/s)
+        real      ppfd_shade_noon                !ppfd for shaded leaf at noon(umol/m2/s)
+        real      stomatal_gn                    !stomatal conductance at noon(umol CO2/m2/s/Pa)
+        real      stomatal_gmin                  !stomatal conductance at minimum(umol CO2/m2/s/Pa)
+        real      A_sun                          !net assimilation per leaf area of sunlit leaf(gC m-2)
+        real      A_shade                        !net assimilation per leaf area of shaded leaf(gC m-2)
+        real      dlt_gpp                        !daily Gross Primary Production(gC m-2 day-1)
+        real      dlt_Rm                         !daily maintenance respiration(gC m-2 day-1)
+        real      dlt_Rg                         !daily growth respiration(gC m-2 day-1)
+		
+		
         !stress factors for biomass growth
-
         real      temp_stress_photo
+
+        !temperature stress factor for grain filling with MAIZSIM method
+        !added by ZN-J
+        real      grain_htstress_maizsim
 
 
         !??????????????????????????????????????????????????????????????
@@ -352,6 +375,18 @@
 
         real      dm_stress_max   (max_stage)    ! sum of maximum daily stress on dm production per phase
         real      dm_green_demand (max_part)     ! biomass demand of the plant parts (g/m^2)
+
+
+        ! Harvest Index (HI) method, added by ZN-J
+        real      HI(366)                 ! daily Harvest Index
+        real      HSA_htstress(366)       ! heat stress around silking-anthesis
+
+        real      HI_h2o_stress(366)      ! water deficit factor on HI, SWAT method
+
+        real      dlt_Brel(366)           ! daily relative biomass (water/light stress),AquaCrop method
+        real      f_ante                  ! average water stress effect before yield formation
+        real      dlt_KS(50)              ! array for daily stress factor limiting pollination
+        real      f_pol                   ! average failure of pollination
 
 
 !-----------------------------------------------------------
@@ -756,7 +791,33 @@
         real     rue_diff_modifier(max_table)
         integer  num_radn_diff_fr
 
-
+		
+        !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+		!SECITON 0. Simulation Options
+        ! New section added by ZN-Jin
+		!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        integer   option_bio_TE                ! =1, Standard APSIM
+                                               ! =2, APSIM with updated VPD
+											   
+        integer   option_trans_eff             ! =1, Standard APSIM
+                                               ! =2, APSIM with updated VPD
+											   
+        integer   option_temp_stress           ! =1, Standard APSIM
+                                               ! =2, STICS method with canopy temperature
+                                               ! =3, SWAT method with exponential response
+											   ! =4, WOFOST method with multiple segments
+											   
+        integer   option_grain_demand          ! =1, Standard APSIM
+                                               ! =2, STICS method with canopy temperature
+                                               ! =3, MAIZSIM method
+											   
+        integer   option_HI_method             ! =1, PEGASUS method
+                                               ! =2, SWAT method
+                                               ! =3, AquaCrop method
+											   
+        integer   option_photosynthesis        ! =1, Standard APSIM with RUE method
+                                               ! =2, Farquhar Photosynthesis model		
+		
         !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         !SECTION 1. CLIMATE CHANGE
         !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -895,6 +956,11 @@
         real      y_stress_photo(max_table)        ! Factors for effect of critical temperatures on rue (0-1)
         integer   num_ave_temp                     ! size_of critical temperatures - rue table
 
+		! added by ZN-J for swat method
+        real      baseT_swat					   ! SWAT method base temperatures for RUE (oC)
+        real      optT_swat				           ! SWAT method optimum temperatures for RUE (oC)
+		
+		
 		! added by ZN-J for wofost method
         real      x_ave_temp_wofost    (max_table)        ! critical temperatures for RUE (oC)
         real      y_stress_photo_wofost(max_table)        ! Factors for effect of critical temperatures on rue (0-1)
@@ -904,6 +970,20 @@
         !??????????????
         real      x_temp_photo(max_table)          !critical temp. for photosyn (oC) on 3-hour. - replaces  x_ave_temp above
         integer   num_temp_photo                   !size of table, replaces  num_ave_temp
+		
+
+		!-----------------------------		
+		!Farquhar photosynthesis model
+        real      EPAR               !PAR photon energy ratio = 4.55(umol/J)
+        real      ppfd_coef          !coef in a relationship between gs and ppfd(umol/m2/s)
+        real      stomatal_gmax      !maximum stomatal conductance(m s-1)?
+        real      stomatal_optT      !optimum temperature for conductance(oC)
+        real      stomatal_limT      !limiting temperature beyond which no conductance(oC)
+        real      vpd_close          !VPD at stomatal closure(kPa)
+        real      vpd_open           !VPD at stomatal full opening(kPa)
+        real      Rm_Q10             !Q10 value for maintenance respiration function
+        real      Rm_coef            !coefficient for maintenance respiration(0.002 g g-1 day-1 at 20oC)
+        real      Rg_coef            !overall growth respiration coefficient(0-1)
 
 
         !-----------------------------
@@ -958,6 +1038,31 @@
 
         integer   start_retrans_dm_stage
         integer   end_retrans_dm_stage
+
+
+        !-----------------------------
+        !HARVEST INDEX (HI)
+
+        ! PEGASUS method, added by ZN-J
+        real    HSA_crT          !critical temp above which grain-set start to decline
+        real    HSA_limT         !limiting temp above which grain-set completely stop
+        real    HI0_PEGASUS      !optimal HI without stress
+
+        ! SWAT method, added by ZN-J
+        real    HI0_SWAT         !optimal HI without stress
+        real    HI_SWAT_min      !minimum HI
+        real    HI_SWAT_coef1    !first curve coefficient for HI to water stress 
+        real    HI_SWAT_coef2    !second curve coefficient for HI to water stress		
+
+        ! AquaCrop method, added by ZN-J
+        real    HI0_AquaCrop     !optimal HI without stress		
+        real    HI_Brel_top      !top of Brel range affecting HI0
+        real    HI_dHI_ante      !allowable increase of HI0 due to water stress before yield formation
+        real    HI_def_pol       !upper threshold for water deficit, relative to Wu/Wd
+        real    HI_Tn_cold       !threshold when cold damage starts(oC)
+        real    HI_Tx_heat       !threshold when heat damage starts(oC)
+        real    HI_excess_fl     !percentage of excess flowers that can be used to compensate loss after stress ameliorated
+
 
         !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
         !SECTION 4. LEAF/STEM/POD AREA GROWTH
@@ -1223,18 +1328,20 @@
 
 
         !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        !SECTION 9. ??????????????????????
+        !SECTION 9. GRAIN FILLING
         !%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
         real      x_temp_grain   (max_table) ! critical temperatures controlling grain fill rates (oC)
         real      y_grain_rate   (max_table) ! Relative grain fill rates for critical temperatures (0-1)
         integer   num_temp_grain             ! size_of table
 
-
-
-
-
-
+		! Added by ZN-J
+		! Source: Pasian & Lieth (1990); Lieth & Pasian Scientifica Hortuculturae 46:109-128 1991
+        real      maizsim_Td     !High temperature compensation point (oC)
+        real      maizsim_b1     !Normalized parameter for temperature response function
+        real      maizsim_b2     !Normalized parameter for temperature response function
+        real      maizsim_b3     !Normalized parameter for temperature response function
+		
 
 
 

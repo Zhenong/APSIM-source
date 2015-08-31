@@ -1187,5 +1187,96 @@
       end subroutine
 
 
+	  
+!     ===========================================================
+      subroutine cproc_transp_eff_co2vpd(vp,            &
+                                transp_eff_cf,          &
+                                current_stage,          &
+                                maxt,                   &
+                                mint,                   &
+                                co2level,               &
+                                co2_level_te,           &
+                                te_co2_modifier,        &
+                                num_co2_level_te,       &
+                                transp_eff)
+!     ===========================================================
+
+!      dll_export cproc_transp_eff_co2
+      use convertmodule  ! g2mm, mb2kpa
+      implicit none
+
+!+  Sub-Program Arguments
+      REAL       vp                  ! (INPUT)  current day vapor pressure, from input
+      REAL       transp_eff_cf(*)    ! (INPUT)  transpiration efficiency coefficien
+      REAL       current_stage       ! (INPUT)  current phenological stages
+      REAL       maxt                ! (INPUT)  maximum air temperature (oC)
+      REAL       mint                ! (INPUT)  minimum air temperature (oC)
+      REAL       co2level            ! (INPUT)  current co2 level (ppm)
+      REAL       co2_level_te(*)     ! (INPUT)  co2 levels (ppm)
+      REAL       te_co2_modifier(*)  ! (INPUT)  te modifiers of co2 levels (0-1)
+      INTEGER    num_co2_level_te    ! (INPUT)  number of table elements in co2-te modifier table
+      REAL       transp_eff          ! (OUTPUT) transpiration coefficient
+
+!+  Purpose
+!       Calculate today's transpiration efficiency from min,max temperatures and co2 level
+!       and converting mm water to g dry matter (g dm/m^2/mm water)
+!       The calculation of VPD changed to daily average temperature and actual vapor pressure at dew point
+
+!+  Mission Statement
+!       Calculate today's transpiration efficiency from VPD and CO2 level
+
+!+  Assumptions
+!       the temperatures are > -237.3 oC for the svp function.
+!       if co2_level=0.0 then co2_level=350ppm
+
+!+  Changes
+!       07/16/2015 added by ZN-J
+
+!+  Constant Values
+      character  my_name*(*)   ! name of procedure
+      parameter (my_name = 'cproc_transp_eff_co2')
+
+!+  Local Variables
+      real       svp           ! function to get saturation vapour pressure for a given temperature in oC (kpa)
+      real       temp_arg      ! dummy temperature for function (oC)
+      real       vpd           ! vapour pressure deficit (kpa)
+      integer    current_phase
+      REAL       co2_modifier
+      real       ave_temp      ! daily average temperature, added by ZN-J
+
+
+      svp(temp_arg) = 6.1078 * exp(17.269*temp_arg/(237.3 + temp_arg)) &
+                             * mb2kpa
+
+!- Implementation Section ----------------------------------
+
+      call push_routine (my_name)
+
+      current_phase = int(current_stage)
+
+      !get vapour pressure deficit when net radiation is positive.
+      ave_temp = (maxt + mint)/2
+	  
+      vpd = svp (ave_temp) - vp
+      vpd = l_bound (vpd, 0.01)
+
+      transp_eff = divide (transp_eff_cf(current_phase), vpd, 0.0) /g2mm
+
+      if (num_co2_level_te .eq. 0) then
+          co2_modifier = 1.0
+      else
+          co2_modifier = linear_interp_real(co2level,    &
+                                  co2_level_te,          &
+                                  te_co2_modifier,       &
+                                  num_co2_level_te)
+      end if
+
+      transp_eff = transp_eff *co2_modifier
+
+      call pop_routine (my_name)
+      return
+      end subroutine	  
+	  
+	  
 
       end module crp_watrModule

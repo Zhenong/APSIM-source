@@ -8,6 +8,7 @@ C     Last change:  E    31 Jul 2001    1:26 pm
       contains
 
       include 'CropModComms.for'
+      include 'Farquhar_model.for'    !added by ZN-Jin, for Farquhar photosynthesis model
 
 *     ===========================================================
       subroutine Crop_process ()
@@ -57,7 +58,7 @@ cnh      call Maize_water_stress(1)
 
       if (g%plant_status.eq.status_alive) then
 
-         call Maize_water_uptake(2)
+         call Maize_water_uptake(2)        ! will calculate plant water uptake --> transpiration
          call Maize_height(1)
          call Maize_leaf_no_init(1)
          call Maize_leaf_no_pot(1)
@@ -65,16 +66,30 @@ cnh      call Maize_water_stress(1)
          call Maize_leaf_area_potential(3) ! was 2 now maize bell shape
          call Maize_leaf_area_stressed(1)
 
-         call Maize_bio_TE(1)
-         call Maize_bio_RUE(1)
+         call Maize_temp_stress(c%option_temp_stress)         ! was 1, modified by ZN-J
+         !call Maize_bio_TE(1)
+         call Maize_bio_TE(c%option_bio_TE)           !was 1, modified by ZN-J
+		 
+         if(c%option_photosynthesis .eq. 1) then      !RUE model 
+             call Maize_bio_RUE(1)
+         elseif(c%option_photosynthesis .eq. 2) then  !Farquhar model
+             call Maize_Farquhar_total()
+         else
+		     !do nothing
+         endif
+			 
          call Maize_bio_actual(1)
 
 
-         call Maize_bio_grain_demand(4) ! was 2
+         call Maize_bio_grain_demand(c%option_grain_demand) ! was 1
          call Maize_bio_partition(3) ! 1 = original (fixed sla_min)
                                      ! 2 = sla_min = f(lfno)
                                      ! 3 = sla_min = f(lai)
          call Maize_bio_retrans(1)
+		 
+         call Maize_harvest_index(c%option_HI_method)    ! Added by ZN-J
+                                                         ! Options include PEGASUS/SWAT/AquaCrop methods
+									  
 
          call Maize_leaf_actual(4)    ! 1 = scc method
                                       ! 2 = fixed sla_max
@@ -125,7 +140,7 @@ cnh      call Maize_water_stress(1)
       ! cleanup after sorg process
 
       call Crop_detachment(1)
-      call Crop_cleanup()
+      call Crop_cleanup()    ! call to "Crop_Check_Bounds","Crop_Totals","Crop_Events"
 
 !      call Maize_water_stress(1)
 !      call Maize_nit_stress(1)
@@ -385,6 +400,39 @@ cnh      call Maize_water_stress(1)
      :                     , 'crop_type', '()'
      :                     , c%crop_type, numvals)
 
+! Simulation options
+      call read_integer_var (section_name
+     :                    , 'option_bio_TE', '()'
+     :                    , c%option_bio_TE, numvals
+     :                    , 0, 100)
+
+      call read_integer_var (section_name
+     :                    , 'option_trans_eff', '()'
+     :                    , c%option_trans_eff numvals
+     :                    , 0, 100)
+
+      call read_integer_var (section_name
+     :                    , 'option_temp_stress', '()'
+     :                    , c%option_temp_stress, numvals
+     :                    , 0, 100)
+
+      call read_integer_var (section_name
+     :                    , 'option_grain_demand', '()'
+     :                    , c%option_grain_demand, numvals
+     :                    , 0, 100)
+
+      call read_integer_var (section_name
+     :                    , 'option_HI_method', '()'
+     :                    , c%option_HI_method, numvals
+     :                    , 0, 100)
+
+      call read_integer_var (section_name
+     :                    , 'option_photosynthesis', '()'
+     :                    , c%option_photosynthesis, numvals
+     :                    , 0, 100)
+! End simulation options
+	 
+	 
       call read_char_array (section_name
      :                     , 'stage_names', max_stage, '()'
      :                     , c%stage_names, numvals)
@@ -1268,6 +1316,7 @@ c     :                    , 0.0, 100.0)
 !!     :                   , 0.0, 10.0)
 
          !    Maize_rue_reduction
+         !-------------------------
 
       call read_real_array (section_name
      :                     , 'x_ave_temp', max_table, '(oC)'
@@ -1280,6 +1329,17 @@ c     :                    , 0.0, 100.0)
      :                     , 'y_stress_photo', max_table, '()'
      :                     , c%y_stress_photo, c%num_factors
      :                     , 0.0, 1.0)
+
+!! added by ZN-J for swat method
+      call read_real_var (section_name
+     :                   , 'baseT_swat', '(oC)'
+     :                   , c%baseT_swat, numvals
+     :                   , 0.0, 20.0)
+
+      call read_real_var (section_name
+     :                   , 'optT_swat', '(oC)'
+     :                   , c%optT_swat, numvals
+     :                   , 10.0, 40.0)
 	 
 !! added by ZN-J for wofost method
       call read_real_array (section_name
@@ -1292,9 +1352,59 @@ c     :                    , 0.0, 100.0)
      :                     , c%y_stress_photo_wofost, c%num_factors
      :                     , 0.0, 1.0)	 
 	 
-	 
-	 
 
+!! added by ZN-J for Farquhar Photosynthesis Model
+      call read_real_var (section_name
+     :                   , 'EPAR', '(umol/J)'
+     :                   , c%EPAR, numvals
+     :                   , 0.0, 10.0)
+	 
+      call read_real_var (section_name
+     :                   , 'ppfd_coef', '(umol/m2/s)'
+     :                   , c%ppfd_coef, numvals
+     :                   , 0.0, 1.0)
+	
+      call read_real_var (section_name
+     :                   , 'stomatal_gmax', '(m/s)'
+     :                   , c%stomatal_gmax, numvals
+     :                   , 0.0, 1.0)
+	
+      call read_real_var (section_name
+     :                   , 'stomatal_optT', '(oC)'
+     :                   , c%stomatal_optT, numvals
+     :                   , 0.0, 50.0)
+
+      call read_real_var (section_name
+     :                   , 'stomatal_limT', '(oC)'
+     :                   , c%stomatal_limT, numvals
+     :                   , 0.0, 50.0)	 
+
+      call read_real_var (section_name
+     :                   , 'vpd_close', '(KPa)'
+     :                   , c%vpd_close, numvals
+     :                   , 0.0, 10.0)
+	 
+      call read_real_var (section_name
+     :                   , 'vpd_open', '(KPa)'
+     :                   , c%vpd_open, numvals
+     :                   , 0.0, 10.0)
+	 
+      call read_real_var (section_name
+     :                   , 'Rm_Q10', '()'
+     :                   , c%Rm_Q10, numvals
+     :                   , 0.0, 10.0)
+	 
+      call read_real_var (section_name
+     :                   , 'Rm_coef', '(g g-1 day-1)'
+     :                   , c%Rm_coef, numvals
+     :                   , 0.0, 1.0)
+	 
+      call read_real_var (section_name
+     :                   , 'Rg_coef', '()'
+     :                   , c%Rg_coef, numvals
+     :                   , 0.0, 1.0)
+	 
+	 
          ! TEMPLATE OPTION
          !    Maize_dm_grain
 
@@ -1307,7 +1417,103 @@ c     :                    , 0.0, 100.0)
      :                     , 'y_grain_rate', max_table, '()'
      :                     , c%y_grain_rate, c%num_temp_grain
      :                     , 0.0, 1.0)
+	 
+         !! added by ZN-J for maizsim method
+      call read_real_var (section_name
+     :                   , 'maizsim_Td', '(oC)'
+     :                   , c%maizsim_Td, numvals
+     :                   , 0.0, 100.0)
 
+      call read_real_var (section_name
+     :                   , 'maizsim_b1', '()'
+     :                   , c%maizsim_b1, numvals
+     :                   , 0.0, 10.0)
+
+      call read_real_var (section_name
+     :                   , 'maizsim_b2', '()'
+     :                   , c%maizsim_b2, numvals
+     :                   , 0.0, 10.0)
+	 
+      call read_real_var (section_name
+     :                   , 'maizsim_b3', '()'
+     :                   , c%maizsim_b3, numvals
+     :                   , 0.0, 10.0)
+
+	 
+	 ! Harvest Index (HI)
+	 ! Added by ZN-J
+      call read_real_var (section_name        ! PEGASUS method
+     :                   , 'HSA_crT', '(oC)'
+     :                   , c%HSA_crT, numvals
+     :                   , 0.0, 50.0)
+
+      call read_real_var (section_name
+     :                   , 'HSA_limT', '(oC)'
+     :                   , c%HSA_limT, numvals
+     :                   , 0.0, 60.0)
+	 
+      call read_real_var (section_name
+     :                   , 'HI0_PEGASUS', '()'
+     :                   , c%HI0_PEGASUS, numvals
+     :                   , 0.0, 1.0)
+
+      call read_real_var (section_name         ! SWAT method
+     :                   , 'HI0_SWAT', '()'
+     :                   , c%HI0_SWAT, numvals
+     :                   , 0.0, 1.0)
+
+      call read_real_var (section_name
+     :                   , 'HI_SWAT_min', '()'
+     :                   , c%HI_SWAT_min, numvals
+     :                   , 0.0, 1.0)
+
+      call read_real_var (section_name
+     :                   , 'HI_SWAT_coef1', '()'
+     :                   , c%HI_SWAT_coef1, numvals
+     :                   , 0.0, 50.0)
+
+      call read_real_var (section_name
+     :                   , 'HI_SWAT_coef1', '()'
+     :                   , c%HI_SWAT_coef2, numvals
+     :                   , 0.0, 50.0)
+
+      call read_real_var (section_name           ! AquaCrop Method
+     :                   , 'HI0_AquaCrop', '()'
+     :                   , c%HI0_AquaCrop, numvals
+     :                   , 0.0, 1.0)
+
+      call read_real_var (section_name
+     :                   , 'HI_Brel_top', '()'
+     :                   , c%HI_Brel_top, numvals
+     :                   , 0.0, 1.0)
+
+      call read_real_var (section_name
+     :                   , 'HI_dHI_ante', '()'
+     :                   , c%HI_dHI_ante, numvals
+     :                   , 1.0, 50.0)
+
+      call read_real_var (section_name
+     :                   , 'HI_def_pol', '()'
+     :                   , c%HI_def_pol, numvals
+     :                   , 0.0, 1.0)
+ 
+      call read_real_var (section_name
+     :                   , 'HI_Tn_cold', '(oC)'
+     :                   , c%HI_Tn_cold, numvals
+     :                   , 0.0, 25.0)
+
+      call read_real_var (section_name
+     :                   , 'HI_Tx_heat', '(oC)'
+     :                   , c%HI_Tx_heat, numvals
+     :                   , 20.0, 50.0)
+
+      call read_real_var (section_name
+     :                   , 'HI_excess_fl', '()'
+     :                   , c%HI_excess_fl, numvals
+     :                   , 0.0, 100.0)
+ 
+
+ 
          !    Maize_tt
 
       call read_real_array (section_name
@@ -1477,18 +1683,19 @@ c     :                    , 0.0, 100.0)
 
       call Maize_nit_stress(1)
 
-!!      call Maize_p_conc(1)
-!!      call Maize_phos_init(1)
-!!      call Maize_p_stress_photo(1)
-!!      call Maize_p_stress_pheno(1)
-!!      call Maize_p_stress_expansion(1)
-!!      call Maize_p_stress_grain(1)
-
-      call Maize_temp_stress(1)		!!ZN-J
+      call Maize_temp_stress(c%option_temp_stress)		!!was 1, modified by ZN-J
 
       call Maize_light_supply(1)
-      call Maize_bio_RUE(1)
-      call Maize_transpiration_eff(1)
+	  
+      if(c%option_photosynthesis .eq. 1) then      !RUE model 
+         call Maize_bio_RUE(1)
+      elseif(c%option_photosynthesis .eq. 2) then  !Farquhar model
+         call Maize_Farquhar_total()
+      else
+         !do nothing
+      endif
+	  
+      call Maize_transpiration_eff(c%option_trans_eff)    !was 1, modified by ZN-J
       call Maize_water_demand(1)
       call Maize_Nit_demand_est(1)
 !!      call Maize_P_demand_est(1)
@@ -1778,6 +1985,7 @@ C     Last change:  E    24 Aug 2001    4:50 pm
 *+  Changes
 *     5/9/96 dph
 *     970317 slw new template form
+*     Modified by ZN-J, add option for max canopy temperature from STICS method
 
 *+  Constant Values
       character  my_name*(*)           ! name of procedure
@@ -1790,7 +1998,7 @@ C     Last change:  E    24 Aug 2001    4:50 pm
          ! implicitly account for both grain no and harvest index
          ! approaches in calculating delta grain.
 
-      if (Option .eq. 4) then
+      if (Option .eq. 1) then
 
            call Maize_heat_stress (g%maxt
      :                      , c%temp_grain_crit_stress
@@ -1835,7 +2043,72 @@ C     Last change:  E    24 Aug 2001    4:50 pm
      :        , g%swdef_expansion
      :        , g%nfact_grain_conc
      :    , g%dlt_dm_grain_demand)
+	 
+      elseif (Option .eq. 2) then     ! replace g%maxt with max canopy temperature by STICS method
+           call Maize_heat_stress (2*g%canopy_temp-g%mint
+     :                      , c%temp_grain_crit_stress
+     :                      , g%dlt_heat_stress_tt)     ! high temperature stres
+	 
+           call Maize_grain_no2(g%current_stage
+     :        , g%days_tot
+     :        , g%dm_plant_top_tot
+     :        , c%grno_grate
+     :        , c%grno_fract
+     :        , c%num_grno_grate
+     :        , p%head_grain_no_max
+     :        , g%heat_stress_tt
+     :        , c%htstress_coeff
+     :        , g%N_conc_min
+     :        , g%dm_green
+     :        , g%N_green
+     :        , g%plants
+     :        , c%seed_wt_min
+     :        , c%grain_N_conc_min
+     :        , g%grain_no)              ! set grain number
 
+           call Maize_dm_grain (
+     :          g%current_stage
+     :        , 2*g%canopy_temp-g%mint
+     :        , g%mint
+     :        , c%x_temp_grain
+     :        , c%y_grain_rate
+     :        , c%num_temp_grain
+     :        , c%swdf_grain_min
+     :        , g%grain_no
+     :        , p%grain_gth_rate
+     :        , g%N_conc_min
+     :        , g%dm_green
+     :        , g%N_green
+     :        , c%temp_fac_min
+     :        , c%tfac_slope
+     :        , c%sw_fac_max
+     :        , c%sfac_slope
+     :        , g%N_conc_crit
+     :        , g%swdef_photo
+     :        , PlantP_pfact_grain()
+     :        , g%swdef_expansion
+     :        , g%nfact_grain_conc
+     :        , g%dlt_dm_grain_demand)  
+
+      elseif (Option .eq. 3) then     ! Use MAIZSIM grain dm demand method, added by ZN-J
+           call Maize_htstress_maizsim (
+     :                        g%maxt
+     :                      , g%mint
+     :                      , c%maizsim_Td
+     :                      , c%maizsim_b1
+     :                      , c%maizsim_b2
+     :                      , c%maizsim_b3
+     :                      , g%grain_htstress_maizsim)     ! high temperature stres
+ 
+           g%grain_no = p%head_grain_no_max * g%plants
+   
+           g%dlt_dm_grain_demand = g%grain_no * p%grain_gth_rate *
+     :                     g%grain_htstress_maizsim * mg2gm
+
+           !P.S. In MAIZSIM, many parameters are fixed within source code
+           !     maxKernelNo = 800, naxKernelFillRate = 0.012g/kernel/day
+           !     I would rather use cultivar parameters in Maize.xml file
+   
       else
          call Fatal_error (ERR_internal, 'Invalid template option')
       endif
@@ -1891,6 +2164,65 @@ C     Last change:  E    24 Aug 2001    4:50 pm
       end subroutine
 
 
+*     ===========================================================
+      subroutine Maize_htstress_maizsim (g_maxt, g_mint
+     :                      , c_maizsim_Td, c_maizsim_b1
+     :                      , c_maizsim_b2, c_maizsim_b3
+     :                      , grain_htstress_maizsim)
+*     ===========================================================
+      implicit none
+
+*+  Sub-Program Arguments
+      real       g_maxt                ! (INPUT) maximum temperature (oC)
+      real       g_mint                ! (INPUT) minimum temperature (oC)
+      real       c_maizsim_Td          ! (INPUT) hight temperature compensation point(oC)
+      real       c_maizsim_b1          ! (INPUT) shape curve coefficient
+      real       c_maizsim_b2          ! (INPUT) shape curve coefficient
+      real       c_maizsim_b3          ! (INPUT) shape curve coefficient	  
+      real       grain_htstress_maizsim    ! (OUTPUT) heat stress on grain filling(oC)
+
+*+  Purpose
+*     Calculate heat stress on grain number for the current day.
+
+*+  Mission statement
+*     Calculate heat stress on grain number for the current day.
+
+*+  Changes
+*   First added by ZN-J
+
+*+  Constant Values
+      character  my_name*(*)           ! name of procedure
+      parameter (my_name = 'Maize_heat_stress')
+	  
+*+  Local Variables
+      real       T_daytime             ! daytime effective temperature
+      real       dividend              ! temporary use only
+      real       divisor               ! temporary use only
+	  
+*- Implementation Section ----------------------------------
+
+      call push_routine (my_name)
+
+      T_daytime = 0.75*g_maxt + 0.25*g_mint
+
+      if (T_daytime.gt.c_maizsim_Td) then
+         grain_htstress_maizsim = 0.0
+		 
+      elseif (T_daytime.le.c_maizsim_Td) then
+         dividend = 1 - exp(-c_maizsim_b3*(c_maizsim_Td-T_daytime))
+         divisor = 1 + exp(c_maizsim_b1-c_maizsim_b2*T_daytime)
+         grain_htstress_maizsim = dividend / divisor     
+               ! because divisor here will always greater than 1, no need to call the divide function
+			   
+      else
+         grain_htstress_maizsim = 1.0     ! should not happen
+      endif
+
+      call pop_routine (my_name)
+      return
+      end subroutine
+	  
+	  
 
 *     ===========================================================
       subroutine Maize_bio_TE (Option)
@@ -1910,6 +2242,7 @@ C     Last change:  E    24 Aug 2001    4:50 pm
 *+  Changes
 *     5/9/96 dph
 *     970317 slw new template form
+*     07/16/2015 new option added by ZN-J
 
 *+  Constant Values
       character  my_name*(*)           ! name of procedure
@@ -1934,6 +2267,24 @@ C     Last change:  E    24 Aug 2001    4:50 pm
      :            , c%num_co2_level_te
      :            , g%transp_eff
      :             )
+	 
+      elseif (Option .eq. 2) then      ! new option added by ZN-J for updated VPD calculation
+        call cproc_transp_eff_co2vpd (
+     :              g%vp
+     :            , c%transp_eff_cf !*g%temp_stress_photo
+     :            , g%current_stage
+     :            , g%maxt
+     :            , g%mint
+     :            , g%co2level
+     :            , c%co2_level_te
+     :            , c%te_co2_modifier
+     :            , c%num_co2_level_te
+     :            , g%transp_eff
+     :             )
+      else 
+         call Fatal_error (ERR_internal, 'Invalid template option')
+      endif
+	  
           ! Need to use actual supply rather than potential in case SWIM is used because
           ! actual can be much less than potential even when wet.  also, salt impacts can
           ! reduce actual when potential is high because kl does not take Cl into account.
@@ -1965,9 +2316,7 @@ C     Last change:  E    24 Aug 2001    4:50 pm
      :         , g%dlt_dm_water
      :         )
           endif
-      else
-         call Fatal_error (ERR_internal, 'Invalid template option')
-      endif
+
 
       call pop_routine (my_name)
       return
@@ -2494,8 +2843,649 @@ c scc This effect must cut in a bit, as changing c_sla_min seems to affect thing
       end subroutine
 
 
+	  
+*     ===========================================================
+      subroutine Maize_harvest_index (Option)
+*     ===========================================================
+      implicit none
+
+*+  Sub-Program Arguments
+      integer    Option                   ! (INPUT) template option number
+
+*+  Purpose
+*     simulate daily increase of harvest index
+
+*+  Mission Statement
+*     daily increase of harvest index
+*     options available for PEGASUS/SWAT/AquaCrop method
+
+*+  Changes
+*   first added by ZN-J
+
+*+  Constant Values
+      character  my_name*(*)           ! name of procedure
+      parameter (my_name = 'Maize_harvest_index')
+
+*+  Local Variables
+      integer    days_after_endjuv     ! count after the first day of endjuv
+      integer    days_after_flagleaf   ! count after the first day of flaglaeaf
+      integer    days_since_flowering  ! count from the first day of flowering
+      integer    days_tot_fl           ! total flowering days
+      real       PHU                   ! potential heat unit, SWAT method
+      real       gamma_wu              ! average water deficit over growing season, SWAT method
+      real       HI_act                ! actual HI
+      real       Brel                  ! relative biomass at the end of vegetative phase
+
+*- Implementation Section ----------------------------------
+      call push_routine (my_name)
+
+      days_after_flagleaf = int(sum_between(flag_leaf,
+     :                                  now,g%days_tot))-1
+
+      days_after_endjuv = int(sum_between(endjuv,
+     :                                  now,g%days_tot))-1
+ 
+      if (Option .eq. 1) then    !PEGASUS method
+
+         call Maize_HI_PEGASUS (
+     :          days_after_flagleaf
+     :        , g%year
+     :        , g%day_of_year
+     :        , g%maxt
+     :        , g%mint
+     :        , g%current_stage
+     :        , c%HSA_crT
+     :        , c%HSA_limT
+     :        , c%HI0_PEGASUS
+     :        , g%HSA_htstress   ! array
+     :        , g%HI             ! array	 
+     :    )
+
+      elseif (Option .eq. 2) then    !SWAT method
+
+         PHU = p%tt_flower_to_maturity - p%tt_flower_to_start_grain
+  
+         call Maize_HI_SWAT (
+     :          g%year
+     :        , g%day_of_year
+     :        , g%current_stage
+     :        , g%tt_tot(INT(g%current_stage))
+     :        , PHU
+     :        , c%HI0_SWAT
+     :        , g%eo
+     :        , g%es
+     :        , g%transpiration
+     :        , g%HI_h2o_stress  ! array
+     :        , g%HI             ! array	 
+     :    )
+ 
+         if(on_day_of(harvest_ripe, g%current_stage, g%days_tot)) then
+             gamma_wu = average_over(days_after_endjuv, 
+     :                    g%HI_h2o_stress, g%year, g%day_of_year)
+
+             HI_act = (g%HI(g%day_of_year)-c%HI_SWAT_min)*gamma_wu /
+     :        (gamma_wu+exp(c%HI_SWAT_coef1-c%HI_SWAT_coef2*gamma_wu)) +
+     :         c%HI_SWAT_min
+
+             g%HI(g%day_of_year) = bound(HI_act, 0.0, c%HI0_SWAT)
+ 
+         else
+             ! do nothing 
+         endif 
+
+      elseif (Option .eq. 3) then    !AquaCrop method
+
+         ! water stress before yield formation	  
+         if(stage_is_between(emerg, flowering,
+     :          g%current_stage)) then
+             g%dlt_Brel(g%day_of_year) =      
+     :           min(g%dlt_dm_light, g%dlt_dm_water)/g%dlt_dm_light
+         endif
+
+         if(on_day_of(flowering, g%current_stage, g%days_tot)) then
+             Brel = average_over(days_after_endjuv, 
+     :           g%dlt_Brel, g%year, g%day_of_year)
+
+             call Maize_AquaCrop_ante(
+     :               Brel                 
+     :             , c%HI_Brel_top        
+     :             , c%HI_dHI_ante        
+     :             , g%current_stage      
+     :             , g%f_ante             
+     :        )
+ 
+         endif
+
+         ! failure of pollination
+*		 if(stage_is_between(flowering, start_grain_fill))
+*		     record KS_w, KS_c, KS_h to KS(*)
+*        on_day_of(start_grain_fill)
+*            count flowering days
+*            calculate Fi(*) for each day
+*            calculate f_pol
+         if(stage_is_between(flowering, start_grain_fill,
+     :          g%current_stage)) then
+ 
+             days_since_flowering = int(sum_between(flowering,
+     :                                    now,g%days_tot))
+ 
+             call Maize_AquaCrop_KS(     
+     :               days_since_flowering 
+     :             , c%HI_def_pol         
+     :             , c%HI_Tn_cold         
+     :             , c%HI_Tx_heat         
+     :             , g%maxt               
+     :             , g%mint               
+     :             , g%swdef_photo        
+     :             , g%dlt_KS                 !array of 50 
+     :        )
+
+         endif
+
+         if(on_day_of(start_grain_fill, g%current_stage,
+     :                g%days_tot)) then
+ 
+             days_tot_fl = int(sum_between(flowering,
+     :                            start_grain_fill,g%days_tot))
+
+             call Maize_AquaCrop_pol(    
+     :               days_tot_fl         
+     :             , c%HI_excess_fl      
+     :             , g%dlt_KS                !array
+     :             , g%f_pol            
+     :        ) 
+ 
+         endif
+
+         if(stage_is_between(start_grain_fill, plant_end,
+     :          g%current_stage)) then
+	     ! This type of implementation leaves open for incorporate 
+		 ! stomatal stress during yield formation
+	 
+             call Maize_HI_AquaCrop (
+     :        , g%day_of_year
+     :        , g%current_stage
+     :        , c%HI0_AquaCrop
+     :        , g%f_ante             
+     :        , g%f_pol             
+     :        , g%HI             ! array	 			 
+     :		 )
+
+         endif		 
+
+      else
+         call Fatal_error (ERR_internal, 'Invalid template option')
+      endif
+
+      call pop_routine (my_name)
+      return
+      end subroutine
+  
+  
+*     ===========================================================
+      subroutine Maize_HI_PEGASUS (
+     :          days_after_flagleaf
+     :        , g_year
+     :        , g_day_of_year
+     :        , g_maxt
+     :        , g_mint
+     :        , g_current_stage
+     :        , c_HSA_crT
+     :        , c_HSA_limT
+     :        , c_HI0_PEGASUS
+     :        , g_HSA_htstress 
+     :        , g_HI           
+     :        )
+*     ===========================================================
+      implicit none
+
+*+  Sub-Program Arguments
+      integer  days_after_flagleaf
+      integer  g_year
+      integer  g_day_of_year
+      real     g_maxt
+      real     g_mint
+      real     g_current_stage
+      real     c_HSA_crT
+      real     c_HSA_limT
+      real     c_HI0_PEGASUS
+      real     g_HSA_htstress(*)   
+      real     g_HI(*)  
+
+*+  Purpose
+*   Calculate Harvest Index with PEGASUS method
+
+*+  Mission Statement
+*   Calculate heat stress for silking-anthesis, and derive heat-stressed HI
+*   Heat stress (HSA_htstress) is simulated between floral_init and plant_end.
+*   Effective HSA_htstress on HI only occurs -5 to +12 days of flag_leaf
+*   HI after start_grain_fill will be the same as the last day of flowering 
+
+*+  Changes
+*   first added by ZN-J
+
+*+  Constant Values
+      character  my_name*(*)           ! name of procedure
+      parameter (my_name = 'Maize_HI_PEGASUS')
+
+*+  Local Variables
+      real     ave_HSA                 ! average heat stress after flowering
+      integer  yesterday               ! day_of_year for yesterday
+
+*- Implementation Section ----------------------------------
+      call push_routine (my_name)
+
+      if(stage_is_between(floral_init, plant_end,
+     :                    g_current_stage )) then
+
+         g_HSA_htstress(g_day_of_year) = crop_htstress_HSA(
+     :                                     g_maxt
+     :                                   , g_mint
+     :                                   , c_HSA_crT
+     :                                   , c_HSA_limT)
+
+         if(stage_is_between(flag_leaf, start_grain_fill,
+     :                    g_current_stage )) then     
+ 
+           ave_HSA = average_over(days_after_flagleaf+5, g_HSA_htstress,
+     :                              g_year, g_day_of_year)
+ 
+           g_HI(g_day_of_year) = c_HI0_PEGASUS * ave_HSA
+
+         elseif(stage_is_between(start_grain_fill, plant_end,
+     :                    g_current_stage )) then
+
+           yesterday = offset_day_of_year(g_year, g_day_of_year, -1) 
+           g_HI(g_day_of_year) = g_HI(yesterday)
+
+         else
+              ! do nothing 
+         endif
+ 
+      endif
+  
+      call pop_routine (my_name)
+      return
+      end subroutine
+  
 
 
+*     ===========================================================
+      subroutine Maize_HI_SWAT (
+     :          g_year
+     :        , g_day_of_year
+     :        , g_current_stage
+     :        , g_tt_tot_sgf   
+     :        , c_PHU
+     :        , c_HI_opt 
+     :        , g_eo   
+     :        , g_es
+     :        , g_transpiration
+     :        , g_HI_h2o_stress   
+     :        , g_HI
+     :       )
+*     ===========================================================
+      implicit none
+
+*+  Sub-Program Arguments
+      integer  g_year
+      integer  g_day_of_year
+      real     g_current_stage
+      real     g_tt_tot_sgf      ! cumulative tt since start_grain_fill
+      real     c_PHU             ! potential heat unit to accomplish grain filling
+      real     c_HI_opt          ! optimal HI without water stress 	  
+      real     g_eo
+      real     g_es 
+      real     g_transpiration
+      real     g_HI_h2o_stress(*)   
+      real     g_HI(*)  
+
+*+  Purpose
+*   Calculate unstressed with SWAT method
+*   Calculate daily water deficit factor
+
+*+  Mission Statement
+*   (i) daily actual/potential evapotranspiration is calculated based on
+*       (es + transpiration)/eo
+*   (ii) unstressed HI increase from 0 since the start_grain_fill according to
+*       the equation 5:2.1.10 in swat2009-theory (exponential), which is a 
+*       function of cumulative tt to PHU.
+
+
+*+  Changes
+*   first added by ZN-J
+
+*+  Constant Values
+      character  my_name*(*)           ! name of procedure
+      parameter (my_name = 'Maize_HI_SWAT')
+
+*+  Local Variables
+      real     fr_ET                   ! fraction of actual to potential evapotranspiration
+      real     fr_PHU                  ! fraction of potential heat units accumulated
+      real     cum_HI                  ! HI up to date (cumulative)
+      integer  yesterday               ! day_of_year for yesterday
+
+*- Implementation Section ----------------------------------
+      call push_routine (my_name)
+
+      ! daily water stress
+      g_eo = bound(g_eo, 0.01,20.0)
+      fr_ET = (g_es + g_transpiration)/g_eo
+      g_HI_h2o_stress(g_day_of_year) = bound(fr_ET, 0.0, 1.0)
+
+      ! potential HI increase
+      if(stage_is_between(start_grain_fill, end_grain_fill,
+     :                    g_current_stage )) then
+
+         fr_PHU = g_tt_tot_sgf / c_PHU
+
+         cum_HI = c_HI_opt * 100.0*fr_PHU / 
+     :         (100.0*fr_PHU + exp(11.1-10.0*fr_PHU))
+
+         g_HI(g_day_of_year) = bound(cum_HI, 0.0, c_HI_opt) 
+
+      elseif(stage_is_between(end_grain_fill, harvest_ripe,
+     :                    g_current_stage )) then
+         
+         fr_PHU = 1.0
+         cum_HI = c_HI_opt * 100.0*fr_PHU / 
+     :         (100.0*fr_PHU + exp(11.1-10.0*fr_PHU))
+
+         g_HI(g_day_of_year) = bound(cum_HI, 0.0, c_HI_opt)
+ 
+      else
+         fr_PHU = 0.0
+         g_HI(g_day_of_year)= 0.0
+ 
+      endif
+
+      call pop_routine (my_name)
+      return
+      end subroutine
+  
+  
+  
+*     ===========================================================
+      subroutine Maize_AquaCrop_ante (
+     :          c_Brel
+     :        , c_Brel_top
+     :        , c_dHI_ante
+     :        , g_current_stage
+     :        , g_f_ante     
+     :  )
+*     ===========================================================
+      implicit none
+
+*+  Sub-Program Arguments
+      real     c_Brel              !ratio of actual to potential biomass at flowering 
+      real     c_Brel_top          !top of Brel range affecting HI0
+      real     c_dHI_ante          !allowable increase of HI0 due to water stress bf VT
+      real     g_current_stage     !current growth stage
+      real     g_f_ante            !(Output) multiplier of water stress effect
+
+*+  Purpose
+*   Calculate impact on HI0_AquaCrop due to water stress before yield formation 
+
+*+  Mission Statement
+*   Calculate the multiplier on optimal AquaCrop Harvest Index (HI0_AquaCrop)
+*   due to water stress before yield formation.
+*   When plant spend less energy in its vegetative growth due to water stress,
+*   the HI could increase. (AquaCrop V4.0, section 3.12.4) 
+
+*+  Changes
+*   first added by ZN-J
+
+*+  Constant Values
+      character  my_name*(*)           ! name of procedure
+      parameter (my_name = 'Maize_AquaCrop_ante')
+
+*+  Local Variables
+      real     Br_low                  ! lower limit of the Brel range affecting HI0
+      real     Br_up                   ! up limit of the Brel range affecting HI0 
+      real     Br_Rng                  ! range of Brel
+      real     Ratio                   ! Brel relative to Br_low/Br_up
+  
+*- Implementation Section ----------------------------------
+      call push_routine (my_name)
+
+      Br_Rng = bound(log(c_dHI_ante)/5.62, 0.0, 1.0)
+      Br_up = bound(c_Brel_top + 0.3333*Br_Rng, 0.0, 1.0)
+      Br_low = bound(c_Brel_top - 0.6667*Br_Rng, 0.0, 1.0)
+  
+      if(c_Brel .lt. c_Brel_top) then
+          Ratio = (c_Brel - Br_low)/(c_Brel_top - Br_low)
+          g_f_ante = 1+((1+sin((1.5-Ratio)*4.0*atan(1.0)))/2.0)    ! 4*atan(1) = Pi
+     :                *(c_dHI_ante/100.0)
+  
+      elseif(c_Brel .ge. c_Brel_top) then  
+          Ratio = (c_Brel - c_Brel_top)/(c_Brel_top - Br_low)
+          g_f_ante = 1+((1+sin((0.5+Ratio)*4.0*atan(1.0)))/2.0)    ! 4*atan(1) = Pi
+     :                *(c_dHI_ante/100.0)
+      else 
+          ! do nothing
+      endif
+  
+      call pop_routine (my_name)
+      return
+      end subroutine
+
+	  
+  
+*     ===========================================================
+      subroutine Maize_AquaCrop_KS (
+     :          days_fl_index
+     :        , c_def_pol 
+     :        , c_Tn_cold
+     :        , c_Tx_heat
+     :        , g_maxt
+     :        , g_mint
+     :        , g_swdef_photo
+     :        , g_dlt_KS
+     :        )
+*     ===========================================================
+      implicit none
+
+*+  Sub-Program Arguments
+      integer  days_fl_index       !days since flowering
+      real     c_def_pol           !ratio of actual to potential biomass at flowering 
+      real     c_Tn_cold           !top of Brel range affecting HI0
+      real     c_Tx_heat           !allowable increase of HI0 due to water stress bf VT
+      real     g_maxt    
+      real     g_mint
+      real     g_swdef_photo       !soil water stress
+      real     g_dlt_KS(*)         !(Output) array for daily stress factor limiting pollination
+
+*+  Purpose
+*   Calculate array for daily stress factor limiting pollination
+
+*+  Mission Statement
+*   Adjustment of HI0_AquaCrop for failure of pollination due to
+*   (i) decrease linearly from 1 at upper threshold (c_def_pol) to 0 at wilting point
+*   (ii) logistic cold damage from 1 at Tn_cold to 0 at Tn_cold-5 (oC)
+*   (iii) logistic heat damage from 1 at Tx_heat to 0 at Tx_heat+5 (oC) 
+
+*+  Changes
+*   first added by ZN-J
+
+*+  Constant Values
+      character  my_name*(*)           ! name of procedure
+      parameter (my_name = 'Maize_AquaCrop_KS')
+
+*+  Local Variables
+      real     ave_temp    ! daily average air temperature
+      real     KS_w        ! Failure of pollination due to water stress
+      real     KS_c        ! Failure of pollination due to cold stress
+      real     KS_h        ! Failure of pollination due to heat stress
+      real     Srel_c      ! relative cold stress
+      real     Srel_h      ! relative heat stress
+ 
+*- Implementation Section ----------------------------------
+      call push_routine (my_name)
+
+      ave_temp = (g_maxt + g_mint)/2.0
+
+      !water stress
+      if(g_swdef_photo .lt. c_def_pol) then
+         KS_w = g_swdef_photo/c_def_pol  
+      else
+         KS_w = 1.0
+      endif
+  
+      !cold stress
+      if(ave_temp.lt.c_Tn_cold .and. ave_temp.gt.(c_Tn_cold-5.0)) then
+         Srel_c = (ave_temp-(c_Tn_cold-5.0))/5.0 
+         KS_c = 0.001/(0.001+0.999*exp(-13.814*Srel_c))
+      elseif(ave_temp .le. (c_Tn_cold-5.0)) then
+         KS_c = 0.0
+      else
+         KS_c = 1.0
+      endif  
+  
+      !heat stress
+      if(ave_temp.lt.(c_Tx_heat+5.0) .and. ave_temp.gt.c_Tx_heat) then
+         Srel_h = (c_Tx_heat + 5.0 - ave_temp)/5.0 
+         KS_h = 0.001/(0.001+0.999*exp(-13.814*Srel_h))
+      elseif(ave_temp .ge. (c_Tx_heat+5.0)) then
+         KS_h = 0.0
+      else
+         KS_h = 1.0
+      endif
+
+      g_dlt_KS(days_fl_index) = bound(KS_w * KS_c * KS_h, 0.0, 1.0) 
+  
+      call pop_routine (my_name)
+      return
+      end subroutine
+ 
+
+ 
+*     ===========================================================
+      subroutine Maize_AquaCrop_pol (
+     :          days_tot_fl
+     :        , c_excess_fl 
+     :        , g_dlt_KS
+     :        , g_f_pol
+     :        )
+*     ===========================================================
+      implicit none
+
+*+  Sub-Program Arguments
+      integer  days_tot_fl         !total flowering days
+      real     c_excess_fl         !ratio of actual to potential biomass at flowering 
+      real     g_dlt_KS(*)         !array for daily stress factor limiting pollination
+      real     g_f_pol             !(Output)multiplier for failure of pollination  
+
+*+  Purpose
+*   Calculate multiplier for failure of pollination
+
+*+  Mission Statement
+*   Calculate multiplier for failure of pollination based on daily flowering fraction
+*   Flowering fraction is assumed to be asymmetric and scaled to time 1~100:
+*   f(t)=0.00558*t^0.63 - 0.000969*t -0.00383
+*   --> I_f(t)=0.003423*t^1.63 - 0.0004845*t^2 - 0.00383*t
+*   See AquaCrop V4.0, secion 3.12.5
+
+*+  Changes
+*   first added by ZN-J
+
+*+  Constant Values
+      character  my_name*(*)           ! name of procedure
+      parameter (my_name = 'Maize_AquaCrop_KS')
+
+*+  Local Variables
+      real    fl_fraction(50)          !array for flowering fraction
+      real    summation
+      integer ii, tt
+      real    c1, c2, c3               !coefficient describing flowering curve
+      parameter    (c1 = 0.003423)     
+      parameter    (c2 = 0.0004845)
+      parameter    (c3 = 0.00383)
+
+*- Implementation Section ----------------------------------
+      call push_routine (my_name)
+
+      ! daily flowering fraction
+      ii = 1
+      tt = 100.0 * real(ii/days_tot_fl)
+      fl_fraction(ii) = c1*(tt**1.63) - c2*(tt**2.0) -c3*tt
+
+      do 10,ii=2, days_tot_fl
+  
+          tt = 100.0 * real(ii/days_tot_fl)
+          fl_fraction(ii) = c1*(tt**1.63) - c2*(tt**2) -c3*tt 
+     :                                - fl_fraction(ii-1)  
+10    continue
+
+      ! weighted mean
+      summation = 0.0
+      do 100,ii = 1, days_tot_fl 
+          summation = summation + g_dlt_KS(ii)*fl_fraction(ii)
+100   continue
+
+      g_f_pol = summation*(1 + c_excess_fl/100.0)
+  
+      call pop_routine (my_name)
+      return
+      end subroutine  
+  
+
+
+*     ===========================================================
+      subroutine Maize_HI_AquaCrop (
+     :        , g_day_of_year
+     :        , g_current_stage
+     :        , c_HI0_AquaCrop
+     :        , g_f_ante
+     :        , g_f_pol
+     :        , g_HI         
+     :        )
+*     ===========================================================
+       implicit none
+
+*+  Sub-Program Arguments
+      integer  g_day_of_year
+      real     g_current_stage
+      real     c_HI0_AquaCrop
+      real     g_f_ante
+      real     g_f_pol
+!     real     g_f_sto	  
+      real     g_HI(*)  
+
+*+  Purpose
+*   Calculate Harvest Index with AquaCrop method
+
+*+  Mission Statement
+*   Assume we already calculated HI reduction multiplier due to:
+*  (i) water stress before yield formation (f_ante)
+*  (ii) failure of pollination
+*  adjusted HI is calculated as HI = HI0 * f_ante * f_pol 
+*  in future, could potentially add water stress during yiled formation (f_sto)  
+
+*+  Changes
+*   first added by ZN-J
+
+*+  Constant Values
+      character  my_name*(*)           ! name of procedure
+      parameter (my_name = 'Maize_HI_AquaCrop')
+
+*+  Local Variables
+
+
+*- Implementation Section ----------------------------------
+      call push_routine (my_name)
+
+      if(stage_is_between(start_grain_fill, plant_end,
+     :                    g_current_stage )) then
+ 
+          g_HI(g_day_of_year) = c_HI0_AquaCrop * g_f_ante * g_f_pol
+ 
+      endif
+  
+      call pop_routine (my_name)
+      return
+      end subroutine 
+  
+  
 *     ===========================================================
       subroutine Maize_plant_death (Option)
 *     ===========================================================
@@ -2911,7 +3901,7 @@ cSCC/JNGH changed le to lt
      :                     , p_head_grain_no_max - c_head_grain_no_crit
      :                     , 0.0))
      :              **0.33
-
+     
       else
             ! we have no barren heads
          fract_of_optimum = 1.0
@@ -2926,6 +3916,7 @@ cSCC/JNGH changed le to lt
 
 
 
+  
 *     ===========================================================
       subroutine maize_check_grain_no (
      :          c_head_grain_no_crit
@@ -3589,7 +4580,7 @@ c     .          interp_sla_max)
       real       g_current_stage
       real       g_days_tot(*)
       real       g_phase_tt(*)
-      integer    start_of_leaf_init !stage at which leaf initiation starts
+      integer    start_of_leaf_init !stage at which leaf initiation starts, input is actually germ
       real       c_leaf_init_rate
       real       c_leaf_no_seed
       real       c_leaf_no_min
@@ -5856,6 +6847,7 @@ cpsc need to develop leaf senescence functions for crop
 *+  Changes
 *     5/9/96 dph
 *     970312 slw - templated
+*     07/16/2015 modified by ZN-J
 
 *+  Constant Values
       character  my_name*(*)           ! name of procedure
@@ -5864,8 +6856,7 @@ cpsc need to develop leaf senescence functions for crop
 *- Implementation Section ----------------------------------
       call push_routine (my_name)
 
-      if (Option .eq. 1) then
-
+      if (Option .eq. 1) then          ! old vpd method based on maxt and mint
 
         call cproc_transp_eff_co2 (
      :              c%svp_fract
@@ -5879,7 +6870,22 @@ cpsc need to develop leaf senescence functions for crop
      :            , c%num_co2_level_te
      :            , g%transp_eff
      :             )
+ 
+      elseif (Option .eq. 2) then     ! vpd based on Tmean and dew point temp
 
+        call cproc_transp_eff_co2vpd (
+     :              g%vp
+     :            , c%transp_eff_cf !*g%temp_stress_photo
+     :            , g%current_stage
+     :            , g%maxt
+     :            , g%mint
+     :            , g%co2level
+     :            , c%co2_level_te
+     :            , c%te_co2_modifier
+     :            , c%num_co2_level_te
+     :            , g%transp_eff
+     :             )  
+  
       else
          call Fatal_error (ERR_internal, 'Invalid template option')
       endif
@@ -5953,17 +6959,27 @@ cpsc need to develop leaf senescence functions for crop
 *+  Changes
 *     010994 jngh specified and programmed
 *     970312 slw - templated
+*     07/11/2015 ZN-J, add calculation of transpiration for STICS method
 
 *+  Constant Values
       character  my_name*(*) ! name of procedure
       parameter (my_name = 'Maize_temp_stress')
+  
+!+  Local Variables
+      integer    deepest_layer    ! deepest soil layer
+      real       sw_supply_sum    ! soil water supply	  
 
 *- Implementation Section ----------------------------------
 
       call push_routine (my_name)
-	
-	!! Add more Options by ZN-J 
-      if (Option .eq. 1) then		!! standard APSIM	  
+
+      deepest_layer = find_layer_no (g%root_depth, g%dlayer
+     :                                , max_layer)
+      sw_supply_sum = sum_real_array (g%dlt_sw_dep, deepest_layer)  
+      g%transpiration = -sw_supply_sum
+
+     !! Add more Options by ZN-J 
+      if (Option .eq. 1) then       !! standard APSIM	  
           call crop_temperature_stress_photo
      :               (c%num_ave_temp
      :              , c%x_ave_temp
@@ -5971,36 +6987,45 @@ cpsc need to develop leaf senescence functions for crop
      :              , g%maxt
      :              , g%mint
      :              , g%temp_stress_photo)
-	 
-      elseif (Option .eq. 2) then	!! STICS method(canopy temperature) 
-          call crop_temperature_stress_stics
+ 
+      elseif (Option .eq. 2) then   !! STICS method(canopy temperature)
+          call crop_canopy_temperature
+     :               (g%maxt
+     :              , g%mint
+     :              , g%radn
+     :              , g%lai
+     :              , g%es          ! not a maize module object
+     :              , g%transpiration
+     :              , g%canopy_height 
+     :              , g%canopy_temp)  
+  
+          call crop_temperature_stress_photo
      :               (c%num_ave_temp
      :              , c%x_ave_temp
      :              , c%y_stress_photo
-     :              , g%maxt
+     :              , 2*g%canopy_temp - g%mint  !maximum canopy temperature
      :              , g%mint
-     :              , g%temp_stress_photo)	  
-	  
-      elseif (Option .eq. 3) then	!! SWAT method(exponential) 
+     :              , g%temp_stress_photo)
+ 
+      elseif (Option .eq. 3) then    !! SWAT method(exponential) 
           call crop_temperature_stress_swat
-     :               (c%num_ave_temp
-     :              , c%x_ave_temp
-     :              , c%y_stress_photo
+     :               (c%baseT_swat
+     :              , c%optT_swat
      :              , g%maxt
      :              , g%mint
      :              , g%temp_stress_photo)
-	 
-      elseif (Option .eq. 4) then	!! WOFOST(more linear pieces) 
+ 
+      elseif (Option .eq. 4) then     !! WOFOST(more linear pieces) 
           call crop_temperature_stress_photo
-     :               (c%num_ave_temp_wofost			!! constant differ with APSIM
-     :              , c%x_ave_temp_wofost			!! constant differ with APSIM		
-     :              , c%y_stress_photo_wofost		!! constant differ with APSIM
+     :               (c%num_ave_temp_wofost    !! constant differ with APSIM
+     :              , c%x_ave_temp_wofost      !! constant differ with APSIM		
+     :              , c%y_stress_photo_wofost  !! constant differ with APSIM
      :              , g%maxt
      :              , g%mint
      :              , g%temp_stress_photo)
-	 
-	  else
-	     call Fatal_error (ERR_internal, 'Invalid template option')
+ 
+      else
+          call Fatal_error (ERR_internal, 'Invalid template option')
       endif
 
       call pop_routine (my_name)
